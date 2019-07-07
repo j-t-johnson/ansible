@@ -48,6 +48,31 @@ typedef struct {
 	cycles_data_t c[ARC_NUM_PRESETS];
 } cycles_state_t;
 
+typedef struct {
+	uint16_t now[4];
+	uint16_t step[4];
+	uint8_t loop[4];
+	uint8_t lcnt[4];
+	bool trmode[4];
+	bool active[4];
+	bool retrig[4];
+	uint8_t range[4];
+	uint16_t vmin;
+	uint16_t vmax;
+	uint16_t tmin;
+	uint16_t tmax;
+	bool fall[4];
+	bool chain[4];
+} contours_data_t;
+
+extern contours_data_t r;
+
+typedef struct {
+	// uint32_t clock_period;
+	uint8_t preset;
+	contours_data_t r[ARC_NUM_PRESETS];
+} contours_state_t;
+
 void set_mode_arc(void);
 void handler_ArcFrontShort(s32 data);
 void handler_ArcFrontLong(s32 data);
@@ -85,3 +110,17 @@ void handler_CyclesRefresh(s32 data);
 void handler_CyclesKey(s32 data);
 void handler_CyclesTr(s32 data);
 void handler_CyclesTrNormal(s32 data);
+
+void default_contours(void);
+void init_contours(void);
+void resume_contours(void);
+void clock_contours(uint8_t phase);
+void ii_contours(uint8_t *d, uint8_t l);
+void refresh_contours(void);
+void refresh_contours_change(void);
+void refresh_contours_config(void);
+void handler_ContoursEnc(s32 data);
+void handler_ContoursRefresh(s32 data);
+void handler_ContoursKey(s32 data);
+void handler_ContoursTr(s32 data);
+void handler_ContoursTrNormal(s32 data);

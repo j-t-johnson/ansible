@@ -191,6 +191,7 @@ void set_mode(ansible_mode_t m) {
 		break;
 	case mArcLevels:
 	case mArcCycles:
+	case mArcContours:
 		set_mode_arc();
 		break;
 	case mMidiStandard:
@@ -531,6 +532,7 @@ void load_flash_state(void) {
 	init_levels();
 	init_cycles();
 	init_kria();
+	init_contours();
 	init_mp();
 	init_es();
 	init_tt();
@@ -577,12 +579,13 @@ static ansible_mode_t ii_ansible_mode_for_cmd(uint8_t cmd) {
 	switch (cmd) {
 	case 0:  return mArcLevels;
 	case 1:  return mArcCycles;
-        case 2:  return mGridKria;
-	case 3:  return mGridMP;
-	case 4:  return mGridES;
-	case 5:  return mMidiStandard;
-	case 6:  return mMidiArp;
-	case 7:  return mTT;
+	case 2:	 return mArcContours;
+    case 3:  return mGridKria;
+	case 4:  return mGridMP;
+	case 5:  return mGridES;
+	case 6:  return mMidiStandard;
+	case 7:  return mMidiArp;
+	case 8:  return mTT;
 	default: return -1;
 	}
 }
@@ -591,12 +594,13 @@ static uint8_t ii_ansible_cmd_for_mode(ansible_mode_t mode) {
 	switch (mode) {
 	case mArcLevels:    return 0;
 	case mArcCycles:    return 1;
-        case mGridKria:     return 2;
-	case mGridMP:       return 3;
-	case mGridES:       return 4;
-	case mMidiStandard: return 5;
-	case mMidiArp:      return 6;
-	case mTT:           return 7;
+	case mArcContours:  return 2;
+    case mGridKria:     return 3;
+	case mGridMP:       return 4;
+	case mGridES:       return 5;
+	case mMidiStandard: return 6;
+	case mMidiArp:      return 7;
+	case mTT:           return 8;
 	default:            return -1;
 	}
 }
@@ -632,6 +636,7 @@ int main(void)
 		default_es();
 		default_levels();
 		default_cycles();
+		default_contours();
 		default_midi_standard();
 		default_midi_arp();
 		default_tt();

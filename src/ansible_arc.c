@@ -44,6 +44,7 @@ static void levels_timer_note3(void* o);
 
 levels_data_t l;
 cycles_data_t c;
+contours_data_t r;
 
 static uint8_t mode;
 static uint8_t mode_config;
@@ -99,6 +100,21 @@ void set_mode_arc(void) {
 		resume_cycles();
 		update_leds(2);
 		break;
+	case mArcContours:
+		// print_dbg("\r\n> mode arc contours");
+		app_event_handlers[kEventKey] = &handler_ContoursKey;
+		app_event_handlers[kEventTr] = &handler_ContoursTr;
+		app_event_handlers[kEventTrNormal] = &handler_ContoursTrNormal;
+		app_event_handlers[kEventMonomeRingEnc] = &handler_ContoursEnc;
+		app_event_handlers[kEventMonomeRefresh] = &handler_ContoursRefresh;
+		clock = &clock_contours;
+		// 24
+		clock_set(DAC_RATE_CV << 3);
+//		init_i2c_slave(II_CR_ADDR);
+		process_ii = &ii_contours;
+		resume_contours();
+		update_leds(3);
+		break;
 	default:
 		break;
 	}
@@ -124,11 +140,16 @@ static inline void arc_leave_preset(void) {
 		arc_refresh = &refresh_levels;
 		break;
 	case mArcCycles:
-
 		app_event_handlers[kEventMonomeRingEnc] = &handler_CyclesEnc;
 		app_event_handlers[kEventKey] = &handler_CyclesKey;
 		mode = 0;
 		arc_refresh = &refresh_cycles;
+		break;
+	case mArcContours:
+		app_event_handlers[kEventMonomeRingEnc] = &handler_ContoursEnc;
+		app_event_handlers[kEventKey] = &handler_ContoursKey;
+		mode = 0;
+		arc_refresh = &refresh_contours;
 		break;
 	default:
 		break;
@@ -159,10 +180,19 @@ void handler_ArcFrontShort(s32 data) {
 }
 
 void handler_ArcFrontLong(s32 data) {
-	if(ansible_mode == mArcLevels)
-		set_mode(mArcCycles);
-	else
-		set_mode(mArcLevels);
+	switch (ansible_mode) {
+		case mArcLevels:
+			set_mode(mArcCycles);
+			break;
+		case mArcCycles:
+			set_mode(mArcContours);
+			break;
+		case mArcContours:
+			set_mode(mArcLevels);
+			break;
+		default:
+			break;
+	}
 }
 
 void ii_arc(uint8_t* d, uint8_t len) {
@@ -208,6 +238,7 @@ void ii_arc(uint8_t* d, uint8_t len) {
 
 static void key_long_levels(uint8_t key);
 static void key_long_cycles(uint8_t key);
+static void key_long_contours(uint8_t key);
 
 static void generate_scales(uint8_t n);
 
@@ -233,6 +264,9 @@ void arc_keytimer(void) {
 			case mArcCycles:
 				key_long_cycles(0);
 				break;
+			case mArcContours:
+				key_long_contours(0);
+				break;
 			default:
 				break;
 			}
@@ -248,6 +282,9 @@ void arc_keytimer(void) {
 				break;
 			case mArcCycles:
 				key_long_cycles(1);
+				break;
+			case mArcContours:
+				key_long_contours(1);
 				break;
 			default:
 				break;
@@ -293,6 +330,12 @@ void handler_ArcPresetKey(s32 data) {
 			arc_leave_preset();
 			resume_cycles();
 			break;
+		case mArcContours:
+			flashc_memset8((void*)&(f.contours_state.preset), arc_preset, 1, true);
+			init_contours();
+			arc_leave_preset();
+			resume_contours();
+		break;
 		default:
 			break;
 		}
@@ -314,10 +357,15 @@ void handler_ArcPresetKey(s32 data) {
 			arc_leave_preset();
 			resume_cycles();
 			break;
+		case mArcContours:
+			flashc_memcpy((void *)&f.contours_state.r[arc_preset], &r, sizeof(r), true);
+			flashc_memset8((void*)&(f.contours_state.preset), arc_preset, 1, true);
+			arc_leave_preset();
+			resume_contours();
+			break;
 		default:
 			break;
 		}
-
 		break;
 	default:
 		break;
@@ -1955,6 +2003,237 @@ void refresh_cycles_config_div(void) {
 		}
 	}
 }
+
+/////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+// contours app
+
+void default_contours(){
+	uint8_t i1;
+
+	for(i1=0;i1<8;i1++)
+		flashc_memcpy((void *)&f.contours_state.r[i1], &r, sizeof(r), true);
+
+	flashc_memset32((void*)&(f.contours_state.preset), 0, 4, true);
+}
+
+void init_contours(){
+	uint8_t i1;
+
+	arc_preset = f.contours_state.preset;
+
+	r.tmin = 1;
+	r.tmax = 10000;
+	r.vmin = 1;
+	r.vmax = 0x3fff;
+
+	for (i1=0;i1<4;i1++) {
+		r.step[i1]=500;
+		r.loop[i1]=1;
+		r.lcnt[i1]=0;
+		r.retrig[i1] = false;
+		if (i1 == 1 || i1 == 3) {
+			r.fall[i1] = true;
+			r.chain[i1] = true;
+		} else {
+			r.fall[i1] = false;
+			r.chain[i1] = false;
+		}
+	}
+}
+
+/// ((n % M) + M) % M
+void refresh_contours() {
+	uint8_t i1,i2,n,lb,ilb, plb;
+	memset(monomeLedBuffer,0,MONOME_MAX_LED_BYTES);
+
+	for(i1=0;i1<4;i1++) {
+		n = r.now[i1] >> 8;
+		lb = (r.tmax - r.step[i1])/312;
+		if (i1 == 0) {
+			plb = (r.tmax - r.step[3])/312;
+		}
+		ilb = 32 - plb;
+		for(i2=0;i2<lb;i2++) {
+			//draw chained seg first
+			if (r.chain[i1]) {
+				if (r.fall[i1]) {
+					monomeLedBuffer[(i1-1)*64 + (((i2 - ilb) % 64) + 64) % 64] = 3;
+				} else {
+					monomeLedBuffer[(i1-1)*64 + ((((i2+32) - ilb) % 64) + 64) % 64] = 3;
+				}
+			}
+			if (r.fall[i1]) {
+				monomeLedBuffer[i1*64 + (i2)] = 6;
+			} else {
+				monomeLedBuffer[i1*64 + ((i2+32)%64)] = 6;
+			}
+		}
+		plb = lb;
+	}
+}
+
+void clock_contours(uint8_t phase){
+	uint8_t i1;
+
+	for(i1=0;i1<4;i1++){
+		if (r.active[i1]){
+			switch (i1){
+				case 0:
+					clr_tr(TR1);
+					break;
+				case 1:
+					clr_tr(TR2);
+					break;
+				case 2:
+					clr_tr(TR3);
+					break;
+				case 3:
+					clr_tr(TR4);
+					break;
+				default:
+					break;
+			}
+			if (r.now[i1] < r.step[i1]) {
+				r.lcnt[i1]++;
+			}
+			r.now[i1] += r.step[i1];
+			if (r.now[i1] > r.vmax) {
+				r.now[i1] = r.vmax;
+			}
+
+			if (r.fall[i1]) {
+				dac_set_value(i1,r.vmax - r.now[i1]);
+				if (r.chain[i1]) {
+					dac_set_value(i1-1,r.vmax - r.now[i1]);
+				}
+			} else {
+				dac_set_value(i1,r.now[i1]);
+				if (r.chain[i1]) {
+					dac_set_value(i1-1,r.vmax - r.now[i1]);
+				}
+			}
+
+			if (r.lcnt[i1] >= r.loop[i1] && r.now[i1] == r.vmax) {
+				r.active[i1] = false;
+				if (r.chain[(i1+1)%4]) {
+					r.active[(i1+1)%4] = true;
+				}
+				r.lcnt[i1] = 0;
+				r.retrig[i1] = false;
+				r.now[i1] = 0;
+				switch (i1) {
+					case 0:
+						set_tr(TR1);
+						break;
+					case 1:
+						set_tr(TR2);
+						break;
+					case 2:
+						set_tr(TR3);
+						break;
+					case 3:
+						set_tr(TR4);
+						break;
+					default:
+						break;
+				}
+			}
+		}
+	}
+	monomeFrameDirty++;
+}
+
+void resume_contours(){
+	uint8_t i1;
+
+	mode = 0;
+	arc_refresh = &refresh_contours;
+	arc_preset = f.contours_state.preset;
+
+	for(i1=0;i1<4;i1++) {
+		dac_set_slew(i1,50);
+		tr_state[i1] = 0;
+		dac_set_value(i1,0);
+	}
+
+	key_count_arc[0] = 0;
+	key_count_arc[1] = 0;
+
+	ext_clock = !gpio_get_pin_value(B10);
+
+	monomeFrameDirty++;
+}
+
+void handler_ContoursEnc(s32 data){
+	uint8_t n;
+	int8_t delta;
+	monome_ring_enc_parse_event_data(data, &n, &delta);
+
+	r.step[n] = ((((r.step[n] + (delta * -3)) % r.tmax) + r.tmax) % r.tmax) + r.tmin;
+}
+
+void handler_ContoursRefresh(s32 data){
+	if(monomeFrameDirty) {
+		arc_refresh();
+
+		monome_set_quadrant_flag(0);
+		monome_set_quadrant_flag(1);
+		monome_set_quadrant_flag(2);
+		monome_set_quadrant_flag(3);
+		(*monome_refresh)();
+	}
+}
+
+void handler_ContoursKey(s32 data){
+	switch (data) {
+		case 0:
+			r.active[0] = true;
+			break;
+		case 2:
+			r.active[2] = true;
+			break;
+		default:
+			break;
+	}
+}
+
+void handler_ContoursTr(s32 data){
+	switch (data) {
+		case 1:
+			r.now[0] = 0;
+			r.active[0] = true;
+			break;
+		case 3:
+			r.now[2] = 0;
+			r.active[2] = true;
+			break;
+		default:
+			break;
+	}
+}
+
+void handler_ContoursTrNormal(s32 data){
+	print_dbg("\r\n> contours tr normal ");
+	print_dbg_ulong(data);
+
+	if(data)
+		ext_clock = true;
+	else {
+		ext_clock = false;
+		monomeFrameDirty++;
+	}
+}
+
+void ii_contours(uint8_t *d, uint8_t len){
+}
+
+static void key_long_contours(uint8_t key) {
+}
+
+////////
+////////
 
 
 

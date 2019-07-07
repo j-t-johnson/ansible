@@ -28,6 +28,7 @@ typedef enum {
 typedef enum {
 	mArcLevels,
 	mArcCycles,
+	mArcContours,
 	mGridKria,
 	mGridMP,
 	mGridES,
@@ -60,6 +61,7 @@ typedef const struct {
 	es_state_t es_state;
 	levels_state_t levels_state;
 	cycles_state_t cycles_state;
+	contours_state_t contours_state;
 	midi_standard_state_t midi_standard_state;
 	midi_arp_state_t midi_arp_state;
 	tt_state_t tt_state;
