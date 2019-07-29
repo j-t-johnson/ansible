@@ -2045,23 +2045,26 @@ void init_contours(){
 
 /// ((n % M) + M) % M
 void refresh_contours() {
-	uint8_t i1,i2,n,lb,ilb, plb;
+	uint8_t i1,i2,n,bg,ibg,pbg;
 	memset(monomeLedBuffer,0,MONOME_MAX_LED_BYTES);
 
 	for(i1=0;i1<4;i1++) {
-		n = r.now[i1] >> 8;
-		lb = (r.tmax - r.step[i1])/312;
+
+		bg = (r.tmax - r.step[i1])/312;
 		if (i1 == 0) {
-			plb = (r.tmax - r.step[3])/312;
+			pbg = (r.tmax - r.step[3])/312;
+		} else {
+			pbg = (r.tmax - r.step[i1-1])/312;
 		}
-		ilb = 32 - plb;
-		for(i2=0;i2<lb;i2++) {
+		ibg = 32 - pbg;
+
+		for(i2=0;i2<bg;i2++) {
 			//draw chained seg first
 			if (r.chain[i1]) {
 				if (r.fall[i1]) {
-					monomeLedBuffer[(i1-1)*64 + (((i2 - ilb) % 64) + 64) % 64] = 3;
+					monomeLedBuffer[(i1-1)*64 + (((i2-ibg) % 64) + 64) % 64] = 3;
 				} else {
-					monomeLedBuffer[(i1-1)*64 + ((((i2+32) - ilb) % 64) + 64) % 64] = 3;
+					monomeLedBuffer[(i1-1)*64 + ((((i2+32)-ibg) % 64) + 64) % 64] = 3;
 				}
 			}
 			if (r.fall[i1]) {
@@ -2070,7 +2073,21 @@ void refresh_contours() {
 				monomeLedBuffer[i1*64 + ((i2+32)%64)] = 6;
 			}
 		}
-		plb = lb;
+		n = ((r.now[i1] >> 8) * bg) / 63;
+
+		if (r.chain[i1]) {
+			if (r.fall[i1]) {
+				monomeLedBuffer[(((((i1-1)*64) + n - ibg) % 64) + 64) % 64] = 11;
+			} else {
+				monomeLedBuffer[(((((i1-1)*64) + n + 32 - ibg) % 64) + 64) % 64] = 11;
+			}
+		}
+
+		if (r.fall[i1]) {
+			monomeLedBuffer[(i1*64) + n % 64] = 15;
+		} else {
+			monomeLedBuffer[(i1*64) + 32 + n % 64] = 15;
+		}
 	}
 }
 
