@@ -2076,17 +2076,21 @@ void refresh_contours() {
 		n = ((r.now[i1] >> 8) * bg) / 63;
 
 		if (r.chain[i1]) {
-			if (r.fall[i1]) {
-				monomeLedBuffer[(((((i1-1)*64) + n - ibg) % 64) + 64) % 64] = 11;
-			} else {
-				monomeLedBuffer[(((((i1-1)*64) + n + 32 - ibg) % 64) + 64) % 64] = 11;
+			if (r.active[i1]) {
+				if (r.fall[i1]) {
+					monomeLedBuffer[((i1-1)*64) + ((n - ibg % 64) + 64) % 64] = 15;
+				} else {
+					monomeLedBuffer[((i1-1)*64) + ((32 + n - ibg % 64) + 64) % 64] = 15;
+				}
 			}
 		}
 
-		if (r.fall[i1]) {
-			monomeLedBuffer[(i1*64) + n % 64] = 15;
-		} else {
-			monomeLedBuffer[(i1*64) + 32 + n % 64] = 15;
+		if (!r.active[i1+1]) {
+			if (r.fall[i1]) {
+				monomeLedBuffer[(i1*64) + n % 64] = 15;
+			} else {
+				monomeLedBuffer[(i1*64) + 32 + n % 64] = 15;
+			}
 		}
 	}
 }
@@ -2170,7 +2174,7 @@ void resume_contours(){
 	arc_preset = f.contours_state.preset;
 
 	for(i1=0;i1<4;i1++) {
-		dac_set_slew(i1,50);
+		dac_set_slew(i1,15);
 		tr_state[i1] = 0;
 		dac_set_value(i1,0);
 	}
@@ -2188,7 +2192,13 @@ void handler_ContoursEnc(s32 data){
 	int8_t delta;
 	monome_ring_enc_parse_event_data(data, &n, &delta);
 
-	r.step[n] = ((((r.step[n] + (delta * -3)) % r.tmax) + r.tmax) % r.tmax) + r.tmin;
+	// r.step[n] = ((((r.step[n] + (delta * -3)) % r.tmax) + r.tmax) % r.tmax) + r.tmin;
+	r.step[n] = r.step[n] + (delta * -3);
+	if (r.step[n] < r.tmin) {
+		r.step[n] = r.tmin;
+	} else if (r.step[n] > r.tmax) {
+		r.step[n] = r.tmax;
+	}
 }
 
 void handler_ContoursRefresh(s32 data){
