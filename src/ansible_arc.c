@@ -2026,13 +2026,13 @@ void init_contours(){
 	r.tmin = 1;
 	r.tmax = 10000;
 	r.vmin = 1;
-	r.vmax = 0x3fff;
 
 	for (i1=0;i1<4;i1++) {
 		r.step[i1]=500;
 		r.loop[i1]=1;
 		r.lcnt[i1]=0;
 		r.retrig[i1] = false;
+		r.vmax[i1] = 0x3fff;
 		if (i1 == 1 || i1 == 3) {
 			r.fall[i1] = true;
 			r.chain[i1] = true;
@@ -2044,7 +2044,7 @@ void init_contours(){
 }
 
 /// ((n % M) + M) % M
-void refresh_contours() {
+void refresh_contours(void) {
 	uint8_t i1,i2,n,bg,ibg,pbg;
 	memset(monomeLedBuffer,0,MONOME_MAX_LED_BYTES);
 
@@ -2095,6 +2095,47 @@ void refresh_contours() {
 	}
 }
 
+void refresh_contours_config_chain(void) {
+	uint8_t i1,i2;
+	memset(monomeLedBuffer,0,MONOME_MAX_LED_BYTES);
+	for (i1=0;i1<4;i1++) {
+		if (r.chain[i1]) {
+			for (i2=0;i2<32;i2++) {
+				monomeLedBuffer[((i1*64) + 48 + i2) & 0x3f] = 3;
+			}
+		} else {
+			for (i2=0;i2<11;i2++) {
+				monomeLedBuffer[((i1*64) + 48 + i2) & 0x3f] = 3;
+				monomeLedBuffer[((i1*64) + 16 - i2)& 0x3f] = 3;
+			}
+		}
+	}
+
+}
+
+void refresh_contours_config_range(void) {
+	uint8_t i1,i2;
+	memset(monomeLedBuffer,0,MONOME_MAX_LED_BYTES);
+
+	for(i1=0;i1<4;i1++)
+		for(i2=0;i2<r.vmax[i1]>>8;i2++)
+			monomeLedBuffer[i1*64 + ((32 + i2) & 0x3f)] = 3;
+}
+
+void refresh_contours_config_loop(void) {
+	uint8_t i1,i2, i3;
+	memset(monomeLedBuffer,0,MONOME_MAX_LED_BYTES);
+
+	for (i1=0;i1<4;i1++) {
+		for (i2=0;i2<r.loop[i1];i2++) {
+			for (i3=0;i3<7;i3++) {
+				monomeLedBuffer[i1*64 + (32 + i3 + (i2 * 8) & 0x3f)] = 3;
+			}
+		}
+	}
+
+}
+
 void clock_contours(uint8_t phase){
 	uint8_t i1;
 
@@ -2120,23 +2161,23 @@ void clock_contours(uint8_t phase){
 				r.lcnt[i1]++;
 			}
 			r.now[i1] += r.step[i1];
-			if (r.now[i1] > r.vmax) {
-				r.now[i1] = r.vmax;
+			if (r.now[i1] > r.vmax[i1]) {
+				r.now[i1] = r.vmax[i1];
 			}
 
 			if (r.fall[i1]) {
-				dac_set_value(i1,r.vmax - r.now[i1]);
+				dac_set_value(i1,r.vmax[i1] - r.now[i1]);
 				if (r.chain[i1]) {
-					dac_set_value(i1-1,r.vmax - r.now[i1]);
+					dac_set_value(i1-1,r.vmax[i1] - r.now[i1]);
 				}
 			} else {
 				dac_set_value(i1,r.now[i1]);
 				if (r.chain[i1]) {
-					dac_set_value(i1-1,r.vmax - r.now[i1]);
+					dac_set_value(i1-1,r.vmax[i1] - r.now[i1]);
 				}
 			}
 
-			if (r.lcnt[i1] >= r.loop[i1] && r.now[i1] == r.vmax) {
+			if (r.lcnt[i1] >= r.loop[i1] && r.now[i1] == r.vmax[i1]) {
 				r.active[i1] = false;
 				if (r.chain[(i1+1)%4]) {
 					r.active[(i1+1)%4] = true;
@@ -2160,6 +2201,8 @@ void clock_contours(uint8_t phase){
 					default:
 						break;
 				}
+			} else if (r.lcnt[i1] < r.loop[i1] && r.now[i1] == r.vmax[i1]) {
+				r.now[i1] = 0;
 			}
 		}
 	}
@@ -2177,6 +2220,7 @@ void resume_contours(){
 		dac_set_slew(i1,15);
 		tr_state[i1] = 0;
 		dac_set_value(i1,0);
+		enc_count[i1] = r.step[i1];
 	}
 
 	key_count_arc[0] = 0;
@@ -2190,14 +2234,59 @@ void resume_contours(){
 void handler_ContoursEnc(s32 data){
 	uint8_t n;
 	int8_t delta;
+	int16_t i;
+
 	monome_ring_enc_parse_event_data(data, &n, &delta);
 
-	// r.step[n] = ((((r.step[n] + (delta * -3)) % r.tmax) + r.tmax) % r.tmax) + r.tmin;
-	r.step[n] = r.step[n] + (delta * -3);
-	if (r.step[n] < r.tmin) {
-		r.step[n] = r.tmin;
-	} else if (r.step[n] > r.tmax) {
-		r.step[n] = r.tmax;
+	switch(mode) {
+		//default
+		case 0:
+			r.step[n] = r.step[n] + (delta * -2);
+			if (r.step[n] < r.tmin) {
+				r.step[n] = r.tmin;
+			} else if (r.step[n] > r.tmax) {
+				r.step[n] = r.tmax;
+			}
+
+			break;
+		//config loop
+		case 1:
+			enc_count[n] += delta;
+			i = enc_count[n] >> 5;
+			enc_count[n] -= i << 5;
+
+			if(i) {
+				i += r.loop[n];
+				if (i < 1) {
+					i = 1;
+				} else if (i > 8) {
+					i = 8;
+				}
+				r.loop[n] = i;
+			}
+
+			break;
+			//config range
+		case 2:
+			enc_count[n] += delta;
+			i = enc_count[n] >> 4;
+			enc_count[n] -= i << 4;
+			if(i) {
+				i += r.vmax[n];
+				if(i < 1) {
+					i = 1;
+				} else if(i > 0x3f) {
+					i = 0x3f;
+				}
+			r.vmax[n] = i << 8;
+			}
+			break;
+		//config chains
+		case 3:
+			//nothing yet
+			break;
+		default:
+			break;
 	}
 }
 
@@ -2216,10 +2305,60 @@ void handler_ContoursRefresh(s32 data){
 void handler_ContoursKey(s32 data){
 	switch (data) {
 		case 0:
-			r.active[0] = true;
+			if (mode == 0) {
+				r.active[0] = true;
+			}
+			break;
+		case 1:
+			if(mode == 1) {
+				mode = 2;
+				enc_count[0] = 0;
+				enc_count[1] = 0;
+				enc_count[2] = 0;
+				enc_count[3] = 0;
+				arc_refresh = &refresh_contours_config_range;
+				monomeFrameDirty++;
+			}
+			else if(mode == 2) {
+				mode = 3;
+				enc_count[0] = 0;
+				enc_count[1] = 0;
+				enc_count[2] = 0;
+				enc_count[3] = 0;
+				arc_refresh = &refresh_contours_config_chain;
+				monomeFrameDirty++;
+			} else if(mode == 3) {
+				mode = 1;
+				enc_count[0] = 0;
+				enc_count[1] = 0;
+				enc_count[2] = 0;
+				enc_count[3] = 0;
+				arc_refresh = &refresh_contours_config_loop;
+				monomeFrameDirty++;
+			} else {
+				key_count_arc[0] = KEY_HOLD_TIME;
+			}
 			break;
 		case 2:
-			r.active[2] = true;
+			if(key_count_arc[1]) {
+				key_count_arc[1] = 0;
+				// SHORT PRESS
+				r.active[2] = true;
+			}
+			else {
+				// LONG RELEASE
+				mode = 0;
+				enc_count[0] = r.step[0];
+				enc_count[1] = r.step[1];
+				enc_count[2] = r.step[2];
+				enc_count[3] = r.step[3];
+				arc_refresh = &refresh_contours;
+				monomeFrameDirty++;
+			}
+			break;
+		// key 2 DOWN
+		case 3:
+			key_count_arc[1] = KEY_HOLD_TIME;
 			break;
 		default:
 			break;
@@ -2257,6 +2396,16 @@ void ii_contours(uint8_t *d, uint8_t len){
 }
 
 static void key_long_contours(uint8_t key) {
+
+	if(key == 1) {
+		mode = 1;
+		enc_count[0] = 0;
+		enc_count[1] = 0;
+		enc_count[2] = 0;
+		enc_count[3] = 0;
+		arc_refresh = &refresh_contours_config_loop;
+		monomeFrameDirty++;
+	}
 }
 
 ////////
