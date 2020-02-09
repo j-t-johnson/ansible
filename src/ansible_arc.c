@@ -335,7 +335,7 @@ void handler_ArcPresetKey(s32 data) {
 			init_contours();
 			arc_leave_preset();
 			resume_contours();
-		break;
+			break;
 		default:
 			break;
 		}
@@ -2012,17 +2012,6 @@ void refresh_cycles_config_div(void) {
 void default_contours(){
 	uint8_t i1;
 
-	for(i1=0;i1<8;i1++)
-		flashc_memcpy((void *)&f.contours_state.r[i1], &r, sizeof(r), true);
-
-	flashc_memset32((void*)&(f.contours_state.preset), 0, 4, true);
-}
-
-void init_contours(){
-	uint8_t i1;
-
-	arc_preset = f.contours_state.preset;
-
 	r.tmin = 1;
 	r.tmax = 10000;
 	r.vmin = 1;
@@ -2041,6 +2030,38 @@ void init_contours(){
 			r.chain[i1] = false;
 		}
 	}
+
+	for(i1=0;i1<8;i1++)
+		flashc_memcpy((void *)&f.contours_state.r[i1], &r, sizeof(r), true);
+
+	flashc_memset32((void*)&(f.contours_state.preset), ansible_mode, 4, true);
+}
+
+void init_contours(){
+	uint8_t i1;
+
+	arc_preset = f.contours_state.preset;
+
+	r.tmin = f.contours_state.r[arc_preset].tmin;
+	r.tmax = f.contours_state.r[arc_preset].tmax;
+	r.vmin = f.contours_state.r[arc_preset].vmin;
+
+	for (i1=0;i1<4;i1++) {
+		r.step[i1]=f.contours_state.r[arc_preset].step[i1];
+		r.loop[i1]=f.contours_state.r[arc_preset].loop[i1];
+		r.lcnt[i1]=f.contours_state.r[arc_preset].lcnt[i1];
+		r.retrig[i1] = f.contours_state.r[arc_preset].retrig[i1];
+		r.vmax[i1] = f.contours_state.r[arc_preset].vmax[i1];
+		if (i1 == 1 || i1 == 3) {
+			r.fall[i1] = f.contours_state.r[arc_preset].fall[i1];
+			r.chain[i1] = f.contours_state.r[arc_preset].chain[i1];
+		} else {
+			r.fall[i1] = f.contours_state.r[arc_preset].fall[i1];
+			r.chain[i1] = f.contours_state.r[arc_preset].chain[i1];
+		}
+	}
+
+
 }
 
 /// ((n % M) + M) % M
@@ -2129,7 +2150,7 @@ void refresh_contours_config_loop(void) {
 	for (i1=0;i1<4;i1++) {
 		for (i2=0;i2<r.loop[i1];i2++) {
 			for (i3=0;i3<7;i3++) {
-				monomeLedBuffer[i1*64 + (32 + i3 + (i2 * 8) & 0x3f)] = 3;
+				monomeLedBuffer[(i1*64) + ((32 + i3 + (i2 * 8)) & 0x3f)] = 3;
 			}
 		}
 	}
@@ -2393,6 +2414,88 @@ void handler_ContoursTrNormal(s32 data){
 }
 
 void ii_contours(uint8_t *d, uint8_t len){
+	if(len) {
+		switch(d[0]) {
+		// case II_CR_PRESET:
+		// 	if(d[1] > -1 && d[1] < 8) {
+		// 		arc_preset = d[1];
+		// 		flashc_memset8((void*)&(f.contours_state.preset), arc_preset, 1, true);
+		// 		init_contours();
+		// 		monomeFrameDirty++;
+		// 	}
+		// 	break;
+		// case II_CR_PRESET + II_GET:
+		// 	ii_tx_queue(arc_preset);
+		// 	break;
+		// case II_CR_RESET:
+		// 	if(d[1] == 0) {
+		// 		r.now[0] = 0;
+		// 		r.now[1] = 0;
+		// 		r.now[2] = 0;
+		// 		r.now[3] = 0;
+		// 	}
+		// 	else if(d[1] < 5)
+		// 		r.now[d[1]-1] = 0;
+		// 	break;
+		// case II_CR_ACT:
+		// 	if(d[1] == 0) {
+		// 		r.active[0] = d[2];
+		// 		r.active[1] = d[2];
+		// 		r.active[2] = d[2];
+		// 		r.active[3] = d[2];
+		// 	}
+		// 	else if(d[1] < 5)
+		// 		r.active[d[1]-1] = d[2];
+		// 	monomeFrameDirty++;
+		// 	break;
+		// case II_CR_ACT + II_GET:
+		// 	if(d[1] == 0)
+		// 		ii_tx_queue(((r.active[0]) + (r.active[1]) + (r.active[2]) + (r.active[3])) >> 2);
+		// 	if(d[1] < 5)
+		// 		ii_tx_queue(r.active[d[1]-1]);
+		// 	break;
+		// case II_CR_DIR:
+		// 	if(d[1] == 0) {
+		// 		if (d[2] == 1) {
+		// 			r.fall[0] = true;
+		// 			r.fall[1] = true;
+		// 			r.fall[2] = true;
+		// 			r.fall[3] = true;
+		// 		} else {
+		// 			r.fall[0] = false;
+		// 			r.fall[1] = false;
+		// 			r.fall[2] = false;
+		// 			r.fall[3] = false;
+		// 		}
+		// 	}
+		// 	else if(d[1] < 5) {
+		// 		if (d[2 == 1]) {
+		// 			r.fall[d[1]-1] = true;
+		// 		} else {
+		// 			r.fall[d[1]-1] = false;
+		// 		}
+		// 	}
+		// 	break;
+		// case II_CR_CHAIN:
+		// 	break;
+		// case II_CR_TIME:
+		// 	break;
+		// case II_CR_LOOP:
+		// 	if(d[1] == 0) {
+		// 		r.loop[0] = d[2];
+		// 		r.loop[1] = d[2];
+		// 		r.loop[2] = d[2];
+		// 		r.loop[3] = d[2];
+		// 	} else if (d[1] < 5) {
+		// 		r.loop[d[1]-1] = d[2];
+		// 	}
+		// 	break;
+		default:
+			ii_arc(d, len);
+			ii_ansible(d, len);
+			break;
+		}
+	}
 }
 
 static void key_long_contours(uint8_t key) {
