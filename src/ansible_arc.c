@@ -1733,7 +1733,7 @@ void handler_CyclesEnc(s32 data) {
 		monomeFrameDirty++;
 		break;
 	case 2:
-		// range
+		//config range
 		enc_count[n] += delta;
 		i = enc_count[n] >> 4;
 		enc_count[n] -= i << 4;
@@ -2012,8 +2012,8 @@ void refresh_cycles_config_div(void) {
 void default_contours(){
 	uint8_t i1;
 
-	r.tmin = 1;
-	r.tmax = 10000;
+	r.tmin = 10;
+	r.tmax = 5000;
 	r.vmin = 1;
 
 	for (i1=0;i1<4;i1++) {
@@ -2021,7 +2021,7 @@ void default_contours(){
 		r.loop[i1]=1;
 		r.lcnt[i1]=0;
 		r.retrig[i1] = false;
-		r.vmax[i1] = 0x3fff;
+		r.vmax[i1] = 0x3f00;
 		if (i1 == 1 || i1 == 3) {
 			r.fall[i1] = true;
 			r.chain[i1] = true;
@@ -2071,11 +2071,11 @@ void refresh_contours(void) {
 
 	for(i1=0;i1<4;i1++) {
 
-		bg = (r.tmax - r.step[i1])/312;
+		bg = (r.tmax - r.step[i1])/155;
 		if (i1 == 0) {
-			pbg = (r.tmax - r.step[3])/312;
+			pbg = (r.tmax - r.step[3])/155;
 		} else {
-			pbg = (r.tmax - r.step[i1-1])/312;
+			pbg = (r.tmax - r.step[i1-1])/155;
 		}
 		ibg = 32 - pbg;
 
@@ -2159,6 +2159,7 @@ void refresh_contours_config_loop(void) {
 
 void clock_contours(uint8_t phase){
 	uint8_t i1;
+	uint16_t vout;
 
 	for(i1=0;i1<4;i1++){
 		if (r.active[i1]){
@@ -2182,23 +2183,27 @@ void clock_contours(uint8_t phase){
 				r.lcnt[i1]++;
 			}
 			r.now[i1] += r.step[i1];
-			if (r.now[i1] > r.vmax[i1]) {
-				r.now[i1] = r.vmax[i1];
+			if (r.now[i1] > 0x3fff) {
+				r.now[i1] = 0x3fff;
 			}
 
 			if (r.fall[i1]) {
-				dac_set_value(i1,r.vmax[i1] - r.now[i1]);
+				vout = ((r.vmax[i1]*(0x3fff - r.now[i1]))/0x3fff);
+				dac_set_value(i1,vout);
 				if (r.chain[i1]) {
-					dac_set_value(i1-1,r.vmax[i1] - r.now[i1]);
+					vout = ((r.vmax[i1-1]*(0x3fff - r.now[i1]))/0x3fff);
+					dac_set_value(i1-1,vout);
 				}
 			} else {
-				dac_set_value(i1,r.now[i1]);
+				vout = ((r.vmax[i1]*(r.now[i1]))/0x3fff);
+				dac_set_value(i1,vout);
 				if (r.chain[i1]) {
-					dac_set_value(i1-1,r.vmax[i1] - r.now[i1]);
+					vout = ((r.vmax[i1]*(r.now[i1-1]))/0x3fff);
+					dac_set_value(i1-1,vout);
 				}
 			}
 
-			if (r.lcnt[i1] >= r.loop[i1] && r.now[i1] == r.vmax[i1]) {
+			if (r.lcnt[i1] >= r.loop[i1] && r.now[i1] == 0x3fff) {
 				r.active[i1] = false;
 				if (r.chain[(i1+1)%4]) {
 					r.active[(i1+1)%4] = true;
@@ -2222,7 +2227,7 @@ void clock_contours(uint8_t phase){
 					default:
 						break;
 				}
-			} else if (r.lcnt[i1] < r.loop[i1] && r.now[i1] == r.vmax[i1]) {
+			} else if (r.lcnt[i1] < r.loop[i1] && r.now[i1] == 0x3fff) {
 				r.now[i1] = 0;
 			}
 		}
@@ -2262,10 +2267,10 @@ void handler_ContoursEnc(s32 data){
 	switch(mode) {
 		//default
 		case 0:
-			r.step[n] = r.step[n] + (delta * -2);
+			r.step[n] = r.step[n] + (delta * -5);
 			if (r.step[n] < r.tmin) {
 				r.step[n] = r.tmin;
-			} else if (r.step[n] > r.tmax) {
+			} else if (r.step[n] >= r.tmax) {
 				r.step[n] = r.tmax;
 			}
 
@@ -2293,11 +2298,11 @@ void handler_ContoursEnc(s32 data){
 			i = enc_count[n] >> 4;
 			enc_count[n] -= i << 4;
 			if(i) {
-				i += r.vmax[n];
+				i += r.vmax[n] >> 8;
 				if(i < 1) {
 					i = 1;
-				} else if(i > 0x3f) {
-					i = 0x3f;
+				} else if(i > 63) {
+					i = 63;
 				}
 			r.vmax[n] = i << 8;
 			}

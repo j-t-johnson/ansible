@@ -50,7 +50,7 @@ typedef struct {
 
 typedef struct {
 	uint16_t now[4];
-	uint16_t step[4];
+	int16_t step[4];
 	uint8_t loop[4];
 	uint8_t lcnt[4];
 	bool trmode[4];
